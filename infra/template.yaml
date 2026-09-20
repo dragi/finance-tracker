@@ -1,0 +1,153 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: Serverless expense tracker - database, API and backend functions
+
+Parameters:
+  DbName:
+    Type: String
+    Default: expensetracker
+
+Globals:
+  Function:
+    Runtime: python3.12
+    CodeUri: ../src/
+    Timeout: 15
+    MemorySize: 256
+    Environment:
+      Variables:
+        DB_CLUSTER_ARN: !GetAtt DbCluster.DBClusterArn
+        DB_SECRET_ARN: !GetAtt DbCluster.MasterUserSecret.SecretArn
+        DB_NAME: !Ref DbName
+
+Resources:
+  # --- database (Aurora Serverless v2, reached through the Data API) ---
+
+  DbCluster:
+    Type: AWS::RDS::DBCluster
+    DeletionPolicy: Delete
+    Properties:
+      Engine: aurora-postgresql
+      DatabaseName: !Ref DbName
+      MasterUsername: expenseadmin
+      ManageMasterUserPassword: true
+      EnableHttpEndpoint: true
+      StorageEncrypted: true
+      ServerlessV2ScalingConfiguration:
+        MinCapacity: 0.5
+        MaxCapacity: 1
+
+  DbInstance:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      DBClusterIdentifier: !Ref DbCluster
+      DBInstanceClass: db.serverless
+      Engine: aurora-postgresql
+
+  # lets a function run statements through the Data API and read the db secret
+  DataApiAccessPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action:
+              - rds-data:ExecuteStatement
+              - rds-data:BatchExecuteStatement
+            Resource: !GetAtt DbCluster.DBClusterArn
+          - Effect: Allow
+            Action: secretsmanager:GetSecretValue
+            Resource: !GetAtt DbCluster.MasterUserSecret.SecretArn
+
+  # --- api ---
+
+  Api:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: prod
+      Cors:
+        AllowOrigin: "'*'"
+        AllowHeaders: "'Content-Type,Authorization'"
+        AllowMethods: "'GET,POST,PUT,DELETE,OPTIONS'"
+
+  # --- functions ---
+
+  CategoriesFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: categories.handler.handler
+      Policies:
+        - !Ref DataApiAccessPolicy
+      Events:
+        List:
+          Type: Api
+          Properties: {RestApiId: !Ref Api, Path: /categories, Method: GET}
+        Create:
+          Type: Api
+          Properties: {RestApiId: !Ref Api, Path: /categories, Method: POST}
+        Update:
+          Type: Api
+          Properties: {RestApiId: !Ref Api, Path: "/categories/{id}", Method: PUT}
+        Delete:
+          Type: Api
+          Properties: {RestApiId: !Ref Api, Path: "/categories/{id}", Method: DELETE}
+
+  TransactionsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: transactions.handler.handler
+      Policies:
+        - !Ref DataApiAccessPolicy
+      Events:
+        List:
+          Type: Api
+          Properties: {RestApiId: !Ref Api, Path: /transactions, Method: GET}
+        Create:
+          Type: Api
+          Properties: {RestApiId: !Ref Api, Path: /transactions, Method: POST}
+        Update:
+          Type: Api
+          Properties: {RestApiId: !Ref Api, Path: "/transactions/{id}", Method: PUT}
+        Delete:
+          Type: Api
+          Properties: {RestApiId: !Ref Api, Path: "/transactions/{id}", Method: DELETE}
+
+  BudgetsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: budgets.handler.handler
+      Policies:
+        - !Ref DataApiAccessPolicy
+      Events:
+        List:
+          Type: Api
+          Properties: {RestApiId: !Ref Api, Path: /budgets, Method: GET}
+        Create:
+          Type: Api
+          Properties: {RestApiId: !Ref Api, Path: /budgets, Method: POST}
+        Update:
+          Type: Api
+          Properties: {RestApiId: !Ref Api, Path: "/budgets/{id}", Method: PUT}
+        Delete:
+          Type: Api
+          Properties: {RestApiId: !Ref Api, Path: "/budgets/{id}", Method: DELETE}
+
+  ReportsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: reports.handler.handler
+      Policies:
+        - !Ref DataApiAccessPolicy
+      Events:
+        Monthly:
+          Type: Api
+          Properties: {RestApiId: !Ref Api, Path: /reports/monthly, Method: GET}
+
+Outputs:
+  ApiUrl:
+    Description: Base URL of the API
+    Value: !Sub "https://${Api}.execute-api.${AWS::Region}.amazonaws.com/prod"
+  DbClusterArn:
+    Value: !GetAtt DbCluster.DBClusterArn
+  DbSecretArn:
+    Value: !GetAtt DbCluster.MasterUserSecret.SecretArn
