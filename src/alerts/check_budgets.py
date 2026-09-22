@@ -5,6 +5,7 @@ import os
 import boto3
 
 from common import db
+from common.logger import logger
 
 _sns = None
 
@@ -20,6 +21,7 @@ def handler(event, context):
     over_budget = find_over_budget()
     for row in over_budget:
         publish_alert(row)
+    logger.info("budget check finished", extra={"alerts_sent": len(over_budget)})
     return {"checked": True, "alerts_sent": len(over_budget)}
 
 

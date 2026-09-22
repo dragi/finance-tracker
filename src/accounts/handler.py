@@ -2,9 +2,11 @@
 
 from common import db
 from common.auth import user_id_from_event
+from common.logger import log_requests
 from common.responses import ok, error
 
 
+@log_requests
 def handler(event, context):
     try:
         user_id = user_id_from_event(event)

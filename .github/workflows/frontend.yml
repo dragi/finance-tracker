@@ -1,0 +1,72 @@
+name: frontend
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - "frontend/**"
+      - ".github/workflows/frontend.yml"
+  pull_request:
+    paths:
+      - "frontend/**"
+  workflow_dispatch:
+
+env:
+  STACK_NAME: expense-tracker
+  AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
+
+defaults:
+  run:
+    working-directory: frontend
+
+jobs:
+  build:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run build
+
+  deploy:
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write # for OIDC login to AWS
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      # api url, cognito client and hosting targets all come from the backend stack
+      - name: Read stack outputs
+        run: |
+          output() {
+            aws cloudformation describe-stacks --stack-name "$STACK_NAME" \
+              --query "Stacks[0].Outputs[?OutputKey=='$1'].OutputValue" --output text
+          }
+          {
+            echo "VITE_API_URL=$(output ApiUrl)"
+            echo "VITE_COGNITO_CLIENT_ID=$(output UserPoolClientId)"
+            echo "VITE_COGNITO_REGION=$AWS_REGION"
+            echo "BUCKET=$(output FrontendBucketName)"
+            echo "DISTRIBUTION_ID=$(output FrontendDistributionId)"
+          } >> "$GITHUB_ENV"
+
+      - run: npm ci
+      - run: npm run build
+      - run: aws s3 sync dist "s3://$BUCKET" --delete
+      - run: aws cloudfront create-invalidation --distribution-id "$DISTRIBUTION_ID" --paths "/*"
