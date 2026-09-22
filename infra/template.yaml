@@ -131,6 +131,17 @@ Resources:
           Type: Api
           Properties: {RestApiId: !Ref Api, Path: "/categories/{id}", Method: DELETE}
 
+  AccountsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: accounts.handler.handler
+      Policies:
+        - !Ref DataApiAccessPolicy
+      Events:
+        List:
+          Type: Api
+          Properties: {RestApiId: !Ref Api, Path: /accounts, Method: GET}
+
   TransactionsFunction:
     Type: AWS::Serverless::Function
     Properties:

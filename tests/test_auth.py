@@ -22,6 +22,9 @@ def test_get_or_create_user_creates_when_missing(mocker):
 
     assert user_id == 9
     assert execute.call_count == 2
+    insert_sql = execute.call_args_list[1].args[0]
+    assert "INSERT INTO users" in insert_sql
+    assert "INSERT INTO accounts" in insert_sql
 
 
 def test_user_id_from_event_extracts_claims(mocker):

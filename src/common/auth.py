@@ -11,9 +11,15 @@ def get_or_create_user(cognito_sub, email):
     if rows:
         return rows[0]["id"]
 
+    # new users get a default account in the same statement so they can
+    # start adding transactions right away
     rows = db.execute(
+        "WITH new_user AS ("
         "INSERT INTO users (cognito_sub, email) VALUES (:cognito_sub, :email) "
-        "RETURNING id",
+        "RETURNING id), "
+        "new_account AS ("
+        "INSERT INTO accounts (user_id, name) SELECT id, 'Main' FROM new_user) "
+        "SELECT id FROM new_user",
         {"cognito_sub": cognito_sub, "email": email},
     )
     return rows[0]["id"]
