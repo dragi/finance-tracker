@@ -6,6 +6,9 @@ Parameters:
   DbName:
     Type: String
     Default: expensetracker
+  AlertEmail:
+    Type: String
+    Description: email address that receives budget-exceeded alerts
 
 Globals:
   Function:
@@ -179,6 +182,38 @@ Resources:
           Type: Api
           Properties: {RestApiId: !Ref Api, Path: /reports/monthly, Method: GET}
 
+  # --- scheduled budget alerts ---
+
+  AlertsTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: expense-tracker-budget-alerts
+
+  AlertsEmailSubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      TopicArn: !Ref AlertsTopic
+      Protocol: email
+      Endpoint: !Ref AlertEmail
+
+  AlertsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: alerts.check_budgets.handler
+      Policies:
+        - !Ref DataApiAccessPolicy
+        - SNSPublishMessagePolicy:
+            TopicName: !GetAtt AlertsTopic.TopicName
+      Environment:
+        Variables:
+          SNS_TOPIC_ARN: !Ref AlertsTopic
+      Events:
+        DailyCheck:
+          Type: Schedule
+          Properties:
+            Schedule: rate(1 day)
+            Description: checks budgets once a day and emails alerts for anything over
+
 Outputs:
   ApiUrl:
     Description: Base URL of the API
@@ -191,3 +226,5 @@ Outputs:
     Value: !GetAtt DbCluster.DBClusterArn
   DbSecretArn:
     Value: !GetAtt DbCluster.MasterUserSecret.SecretArn
+  AlertsTopicArn:
+    Value: !Ref AlertsTopic
