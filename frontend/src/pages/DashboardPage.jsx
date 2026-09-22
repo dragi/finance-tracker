@@ -3,6 +3,7 @@ import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import TransactionForm from "../components/TransactionForm";
 import TransactionList from "../components/TransactionList";
+import SpendingChart from "../components/SpendingChart";
 
 function byNewest(a, b) {
   if (a.transaction_date !== b.transaction_date) {
@@ -70,6 +71,7 @@ export default function DashboardPage() {
         <p className="muted">Loading...</p>
       ) : (
         <>
+          <SpendingChart refreshKey={transactions} />
           <TransactionForm
             accounts={accounts}
             categories={categories}
